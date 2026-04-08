@@ -1,0 +1,11 @@
+---
+title: "Crab-coral model"
+author: "Julianna Renzi"
+date: "2026-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
