@@ -3,9 +3,254 @@ title: "Crab-coral model"
 author: "Julianna Renzi"
 date: "2026-04-08"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Model structure: coral-crabs
+
+First, I'll start with the model we wrote down at WACKME 2026 for coral allocation strategies with crabs:
+
+**Change in host coral (H) over time** = coral growth - coral mortality - predation likelihood * crab defense
+$$\frac{dH}{dt} = rC - \ell H - pH\left(\frac{1}{1+D}\right)$$
+
+**Change in host carbon (C) over time** = endosymbiont carbon + heterotrophic carbon - carbon lost to growth - carbon lost to maintenance 
+$$\frac{dC}{dt} = eH + hH - rC - mH - fC$$
+
+**Change in crab defensiveness (D) over time** = increase from host investment - weakening
+$$\frac{dD}{dt} = afC\left(\frac{sH - D}{sH}\right) - \omega D$$
+# Define terms
+
+| Symbol | Type | Description | Units |
+|--------|------|-------------|-------|
+| $H$ | State variable | Coral biomass | biomass |
+| $C$ | State variable | Coral carbon | carbon units |
+| $D$ | State variable | Crab defensiveness | defensiveness units |
+| $r$ | Parameter | Carbon-to-coral conversion rate (coral growth from carbon) | time$^{-1}$ |
+| $\ell$ | Parameter | Coral natural mortality rate | time$^{-1}$ |
+| $p$ | Parameter | Probability of predation on coral | time$^{-1}$ |
+| $e$ | Parameter | Endosymbiont carbon translocation rate per unit coral  | time$^{-1}$ |
+| $h$ | Parameter | Heterotrophic carbon acquisition rate per unit coral (feeding) | time$^{-1}$ |
+| $m$ | Parameter | Maintenance carbon cost per coral | time$^{-1}$ |
+| $f$ | Parameter | Crab food consumption rate (carbon consumed per unit $C$) | time$^{-1}$ |
+| $f$ | Parameter | Investment rate of carbon by coral to crabs in the form of food | time$^{-1}$ |
+| $a$ | Parameter | Conversion rate of carbon given to crab to crab defensiveness | time$^{-1}$ |
+| $s$ | Parameter | Scaling factor for defensiveness capacity relative to $H$ | dimensionless |
+| $\omega$ | Parameter | Defensiveness decay rate | time$^{-1}$ |
+
+- Why have a weakening term? I think so that defensiveness can decrease if C gets too low--i.e., represents some cost to maintaining defensiveness; means D has an equilibrium where C-fueled growth balances general decay
+
+# Simulate the model through time
+
+Parameters
+
+```{r}
+r <- 0.3   # coral growth from carbon
+l <- 0.2   # coral mortality rate ("loss")
+p <- 0.4   # predation probability
+e <- 0.5   # Endosymbiont carbon translocation rate 
+h <- 0.2   # heterotrophic carbon acquisition rate
+m <- 0.1  # maintenance carbon cost per unit coral
+f <- 0.3   # coral carbon allocation to crabs
+a <- 0.1   # conversion of carbon food to defensive behavior by crabs
+s <- 2.0   # dcaling factor for crab defensiveness capacity relative to H
+w <- 0.15  # defensiveness weakening/decay rate
+```
+
+Create holding vectors
+
+```{r}
+# create a vector of timesteps to iterate over
+tset <- seq(from = 0, to = 10000, length.out = 5000)
+
+# create holding vectors and store initial conditions (arbitrarily chosen)
+H.simu <- NaN*tset; H.simu[1] <- 100
+C.simu <- NaN*tset; C.simu[1] <- 100
+D.simu <- NaN*tset; D.simu[1] <- 10
+```
+
+Run the simulation loop
+
+```{r}
+# for each timestep
+for(i in 2:length(tset)){
+  # calculate change in time
+	dt <- tset[i] - tset[i-1]
+	
+	# store placeholder variables
+	H <- H.simu[i-1]
+	C <- C.simu[i-1]
+	D <- D.simu[i-1]
+	
+	# calculate change in state variables
+	dH <- ( r*C - l*H - p*H*(1/(1 + D)) )*dt
+	dC <- ( e*H + h*H - r*C - m*H - f*C )*dt
+	dD <- ( a*f*C * ((s*H - D)/(s*H)) - w*D )*dt
+	
+	# calculate total population size
+	H.simu[i] <- H + dH
+	C.simu[i] <- C + dC	
+	D.simu[i] <- D + dD	
+}
+```
+
+# Plot timeseries
+
+```{r}
+plot(x = tset, y = H.simu, 
+     type = 'l', lwd = 2, lty = 1, col = "coral",
+     xlab = 'Time', ylab = 'Quantity')
+lines(x = tset, y = C.simu, 
+     type = 'l', lwd = 2, lty = 2, col = "red")
+lines(x = tset, y = D.simu, 
+     type = 'l', lwd = 2, lty = 3, col = "black")
+
+legend("topleft",
+       col = c("coral", "red", "black"),
+       lty = c(1, 2, 3),
+       legend = c("Coral", "Carbon", "Defense"))
+```
+
+Seems like we need a logistic modifier?
+
+# Logistic model
+
+Now:
+
+$$\frac{dH}{dt} = rC \left(1 - \frac{H}{K}\right) - pH\left(\frac{1}{1+D}\right)$$
+Parameters (now no l, but have a K)
+
+```{r}
+r <- 0.3   # coral growth from carbon
+K <- 200   # coral carrying capacity
+p <- 0.6   # predation probability
+e <- 0.5   # Endosymbiont carbon translocation rate 
+h <- 0.2   # heterotrophic carbon acquisition rate
+m <- 0.1  # maintenance carbon cost per unit coral
+f <- 0.4   # coral carbon allocation to crabs
+a <- 0.4   # conversion of carbon food to defensive behavior by crabs
+s <- 2.0   # scaling factor for crab defensiveness capacity relative to H
+w <- 0.15  # defensiveness weakening/decay rate
+```
+
+Create holding vectors
+
+```{r}
+# create a vector of timesteps to iterate over
+tset <- seq(from = 0, to = 100, length.out = 5000)
+
+# create holding vectors and store initial conditions (arbitrarily chosen)
+H.simu <- NaN*tset; H.simu[1] <- 100
+C.simu <- NaN*tset; C.simu[1] <- 100
+D.simu <- NaN*tset; D.simu[1] <- 10
+```
+
+Run the simulation loop
+
+```{r}
+# for each timestep
+for(i in 2:length(tset)){
+  # calculate change in time
+	dt <- tset[i] - tset[i-1]
+	
+	# store placeholder variables
+	H <- H.simu[i-1]
+	C <- C.simu[i-1]
+	D <- D.simu[i-1]
+	
+	# calculate change in state variables
+	dH <- ( r*C*(1 - (H/K)) - p*H*(1/(1 + D)) )*dt
+	dC <- ( e*H + h*H - r*C - m*H - f*C )*dt
+	dD <- ( a*f*C * ((s*H - D)/(s*H)) - w*D )*dt
+	
+	# calculate total population size
+	H.simu[i] <- H + dH
+	C.simu[i] <- C + dC	
+	D.simu[i] <- D + dD	
+}
+```
+
+# Plot timeseries
+
+```{r}
+plot(x = tset, y = H.simu, 
+     type = 'l', lwd = 2, lty = 1, col = "coral",
+     xlab = 'Time', ylab = 'Quantity',
+     ylim = c(0, K))
+lines(x = tset, y = C.simu, 
+     type = 'l', lwd = 2, lty = 2, col = "red")
+lines(x = tset, y = D.simu, 
+     type = 'l', lwd = 2, lty = 3, col = "black")
+
+legend("bottomright",
+       col = c("coral", "red", "black"),
+       lty = c(1, 2, 3),
+       legend = c("Coral", "Carbon", "Defense"))
+```
+
+# Bifurcation of f vs. H*
+
+```{r}
+# values of f to iterate over
+fset <- seq(from = 0, to = 2, length.out = 50) 
+
+# holding vectors for equilibria
+Hstarset <- NaN*fset
+Cstarset <- NaN*fset
+Dstarset <- NaN*fset
+
+for(j in 1:length(fset)){
+  f <- fset[j]
+  
+  H.simu <- NaN*tset; H.simu[1] <- 100
+  C.simu <- NaN*tset; C.simu[1] <- 100
+  D.simu <- NaN*tset; D.simu[1] <- 50
+  
+  
+  for(i in 2:length(tset)){
+    dt <- tset[i]-tset[i-1]
+    # store placeholder variables
+  	H <- H.simu[i-1]
+  	C <- C.simu[i-1]
+  	D <- D.simu[i-1]
+  	
+  	# calculate change in state variables
+  	dH <- ( r*C*(1 - (H/K)) - p*H*(1/(1 + D)) )*dt
+  	dC <- ( e*H + h*H - r*C - m*H - f*C )*dt
+  	dD <- ( a*f*C * ((s*H - D)/(s*H)) - w*D )*dt
+  	
+  	# calculate total population size
+  	H.simu[i] <- H + dH
+  	C.simu[i] <- C + dC	
+  	D.simu[i] <- D + dD	
+  }
+  
+  Hstarset[j] <- H.simu[length(tset)]
+  Cstarset[j] <- C.simu[length(tset)]
+  Dstarset[j] <- D.simu[length(tset)]
+}
+```
+
+Plot
+
+```{r}
+plot(x = fset, y = Hstarset, 
+     type = 'l', lwd = 2, lty = 1, col = "coral",
+     xlab = 'Allocation rate to crabs', ylab = 'Quantity',
+     ylim = c(0, 350))
+lines(x = fset, y = Cstarset, 
+     type = 'l', lwd = 2, lty = 2, col = "red")
+lines(x = fset, y = Dstarset, 
+     type = 'l', lwd = 2, lty = 3, col = "black")
+
+legend("topright",
+       col = c("coral", "red", "black"),
+       lty = c(1, 2, 3),
+       legend = c("Coral", "Carbon", "Defense"))
+```
+
 
